@@ -18,7 +18,7 @@ except KeyError:
     st.stop()
 
 # Inicializar modelos e embeddings
-llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
 # Função para processar o arquivo
