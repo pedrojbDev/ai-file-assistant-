@@ -65,7 +65,7 @@ def initialize_retriever():
 
 
 def main():
-    st.title("Sistema de Perguntas sobre Arquivos 📄🤖")
+    st.title("AI File Assistent 📄🤖")
     st.write("Carregue um arquivo (PDF ou TXT) e faça perguntas sobre o conteúdo.")
 
     initialize_retriever()
