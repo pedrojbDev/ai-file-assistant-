@@ -21,7 +21,7 @@ except KeyError:
 llm = ChatOpenAI(model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-# Função para processar o arquivo
+
 def process_file(uploaded_file):
     """
     Processa um arquivo carregado (PDF ou texto) e retorna os documentos extraídos.
@@ -31,24 +31,44 @@ def process_file(uploaded_file):
         temp_file.write(uploaded_file.read())
         temp_file.flush()
 
-        if ext == ".pdf":
-            loader = PyPDFLoader(temp_file.name)
-        elif ext == ".txt":
-            loader = TextLoader(temp_file.name)
-        else:
-            os.remove(temp_file.name)  # Exclui o arquivo temporário
-            raise ValueError("Formato de arquivo não suportado. Use PDF ou TXT.")
-
-        documents = loader.load()
-
-    # Excluir o arquivo temporário após o uso
-    os.remove(temp_file.name)
+        try:
+            if ext == ".pdf":
+                loader = PyPDFLoader(temp_file.name)
+            elif ext == ".txt":
+                loader = TextLoader(temp_file.name)
+            else:
+                raise ValueError("Formato de arquivo não suportado. Use PDF ou TXT.")
+            documents = loader.load()
+        finally:
+            os.remove(temp_file.name)  # Excluir o arquivo temporário após o uso
     return documents
 
-# Função principal para criar o índice vetorial e permitir perguntas
+
+def create_vectorstore(documents):
+    """
+    Cria e retorna um índice vetorial a partir dos documentos fornecidos.
+    """
+    try:
+        return FAISS.from_documents(documents, embeddings)
+    except Exception as e:
+        raise RuntimeError(f"Erro ao criar índice vetorial: {e}")
+
+
+def initialize_retriever():
+    """
+    Inicializa o retriever na sessão, caso ainda não exista.
+    """
+    if "retriever" not in st.session_state:
+        st.session_state["retriever"] = None
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+
 def main():
     st.title("Sistema de Perguntas sobre Arquivos 📄🤖")
     st.write("Carregue um arquivo (PDF ou TXT) e faça perguntas sobre o conteúdo.")
+
+    initialize_retriever()
 
     # Upload do arquivo
     uploaded_file = st.file_uploader("Faça upload de um arquivo", type=["txt", "pdf"])
@@ -56,28 +76,23 @@ def main():
         st.info("Por favor, faça upload de um arquivo para começar.")
         return
 
-    try:
-        st.write("Processando o arquivo...")
-        documents = process_file(uploaded_file)
-        st.success("Arquivo carregado com sucesso!")
-    except Exception as e:
-        st.error(f"Erro ao processar o arquivo: {e}")
-        return
-
-    # Criar índice vetorial
-    with st.spinner("Criando índice vetorial..."):
+    if st.button("Processar Arquivo"):
         try:
-            vectorstore = FAISS.from_documents(documents, embeddings)
+            st.write("Processando o arquivo...")
+            documents = process_file(uploaded_file)
+            st.success("Arquivo carregado com sucesso!")
+            st.write("Criando índice vetorial...")
+            vectorstore = create_vectorstore(documents)
+            st.session_state["retriever"] = vectorstore.as_retriever()
+            st.success("Índice vetorial criado com sucesso!")
         except Exception as e:
-            st.error(f"Erro ao criar índice vetorial: {e}")
+            st.error(f"Erro ao processar o arquivo: {e}")
             return
 
-    # Gerenciar histórico de conversa
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = []
-    if "retriever" not in st.session_state:
-        retriever = vectorstore.as_retriever()
-        st.session_state["retriever"] = retriever
+    # Verificar se o índice vetorial foi criado
+    if not st.session_state["retriever"]:
+        st.warning("Faça upload de um arquivo e processe-o para começar.")
+        return
 
     # Entrada de perguntas do usuário
     st.write("### Faça perguntas sobre o arquivo")
@@ -94,7 +109,7 @@ def main():
                     st.session_state["chat_history"] = st.session_state["chat_history"][-MAX_HISTORY_LENGTH:]
 
                 response = chain.run({"question": user_question, "chat_history": st.session_state["chat_history"]})
-                
+
                 # Atualizar histórico de conversa
                 st.session_state["chat_history"].append((user_question, response))
 
@@ -104,6 +119,7 @@ def main():
             except Exception as e:
                 st.error(f"Erro ao processar sua pergunta: {e}")
 
-# Executa a aplicação
-main()
 
+# Executa a aplicação
+if __name__ == "__main__":
+    main()
